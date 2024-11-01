@@ -14,7 +14,7 @@ Albacore's unique design makes it suitable for use in both commercial and person
 ## Components
 
 |Name|Platform|Description|
-|-----|-----|
+|-----|-----|-----|
 |[Bluefin](https://github.com/cobdfamily/bluefin/)|MacOS|System compatability layer|
 |Blackfin|Linux|System compatability layer|
 |Yellowfin|Web|System compatability layer|
