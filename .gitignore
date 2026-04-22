@@ -129,3 +129,10 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .DS_Store
+
+# Playwright / session state (auth cookies — never commit)
+sessions/
+playwright/auth/
+.playwright/
+*_session.json
+storage-state.json
