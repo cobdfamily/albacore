@@ -1,0 +1,20 @@
+{
+  "name": "@cobd/currentmap",
+  "version": "1.0.0",
+  "description": "Map accessibility attributes across platforms",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && fix-tsc-es-imports -y && npm version patch --no-git-tag-version"
+  },
+  "author": "Alex Jurgensen",
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "csv-parse": "^5.5.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.6",
+    "fix-tsc-es-imports": "^0.1.6",
+    "typescript": "^5.6.3"
+  }
+}
