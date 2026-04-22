@@ -8,3 +8,10 @@ coverage/
 .env.local
 .DS_Store
 .eslintcache
+
+# Playwright / session state (auth cookies — never commit)
+sessions/
+playwright/auth/
+.playwright/
+*_session.json
+storage-state.json
