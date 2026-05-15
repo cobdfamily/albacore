@@ -1,3 +1,18 @@
+// Platform role-name translator for the Tuna screen
+// reader. Reads ./assets/roles.csv at module load and
+// exposes two lookup tables:
+//   toNative -- ARIA role -> the current OS's native
+//               accessibility-tree role name
+//   toAria   -- native role -> the ARIA role
+// The CSV has columns Aria, darwin, win32, linux. Empty
+// cells mean "no equivalent on that platform" and are
+// skipped, so callers always get either a string or
+// undefined -- never an empty string.
+//
+// Read errors are logged but not thrown: a missing CSV
+// shouldn't crash the consumer; the maps will just be
+// empty and toAria/toNative lookups return undefined.
+
 import fs from 'fs';
 import { parse } from 'csv-parse/sync';
 
