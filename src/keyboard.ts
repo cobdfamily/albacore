@@ -1,3 +1,13 @@
+// Wraps Electron's globalShortcut with a debounce that
+// counts presses inside a 250 ms window. The screen
+// reader fires multi-tap gestures (one-press / two-press
+// / three-press) on the same shortcut, so we forward
+// (shortcut, bounces) to the renderer via the
+// "TFKeyboard" IPC message after the press settle
+// interval. Bounce counter caps at 3 then wraps modulo
+// 3 so a long held key doesn't blow past the gesture
+// table.
+
 import { globalShortcut } from "electron";
 
 export class Keyboard {

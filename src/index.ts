@@ -1,3 +1,12 @@
+// Tuna screen-reader Electron entry point.
+//
+// Boots a hidden BrowserWindow that loads www/index.html
+// (the renderer-side screen reader UI), then wires
+// Ctrl+Shift+F12 and Ctrl+Shift+A as global shortcuts via
+// the Keyboard helper. The window stays hidden -- Tuna is
+// audio-first; the BrowserWindow is a host for the JS
+// runtime, not a visible UI.
+
 import { app, BrowserWindow, globalShortcut } from "electron";
 import { Keyboard } from "./keyboard";
 import path from "path";
