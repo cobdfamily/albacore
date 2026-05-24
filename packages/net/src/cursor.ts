@@ -26,8 +26,23 @@ import { Bluetide } from "@cobd/bluetide";
 import { Sandbucket, type Element } from "@cobd/sandbucket";
 import { Reader } from "@cobd/core";
 import { AudioContext, audioBackend } from "./audio.js";
+import {
+    speechSynthesis,
+    SpeechSynthesisUtterance,
+    speechBackend
+} from "./speech.js";
 
 const audio = new AudioContext();
+
+const speak = (text: string): void => {
+    // Match real screen-reader behavior: a new
+    // announcement interrupts whatever was still
+    // being spoken. Without cancel() the queue
+    // grows on every keystroke and TTS lags the
+    // cursor by seconds.
+    speechSynthesis.cancel();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+};
 // Boundary cue lives in @cobd/bubbles (the shared
 // asset bundle). import.meta.resolve walks the
 // workspace symlink to the real on-disk path; we
@@ -37,10 +52,15 @@ const boundaryCue = fileURLToPath(
     import.meta.resolve("@cobd/bubbles/assets/command.m4a")
 );
 
+const VERBOSE = process.env.NET_VERBOSE === "1";
+
 const boundary = async (): Promise<void> => {
-    // Audio-only: a screen-reader user already
-    // hears the cue; printing "(boundary)" on top
-    // is just text-mode noise.
+    // Audio-only by default: a screen-reader user
+    // already hears the cue; text on top is just
+    // noise. Tests opt in via NET_VERBOSE=1 so a
+    // harness can detect the dead-end state on
+    // stdout.
+    if (VERBOSE) process.stdout.write("(boundary)\n");
     await audio.play(boundaryCue);
 };
 
@@ -52,6 +72,7 @@ const announce = async (element: Element | null): Promise<void> => {
     const label = (await element.computeLabel()) || "<no label>";
     const role = (await element.role()) ?? "?";
     process.stdout.write(`${label}  [${role}]\n`);
+    speak(`${label}, ${role}`);
 };
 
 const childrenWithSiblings = async (element: Element): Promise<Element[]> => {
@@ -153,6 +174,11 @@ const main = async (): Promise<void> => {
     if (!audioBackend.ffplay) {
         process.stderr.write(
             "net cursor: ffplay not found on PATH; boundary beeps will fall back to terminal bell.\n"
+        );
+    }
+    if (!speechBackend.binary) {
+        process.stderr.write(
+            "net cursor: espeak/espeak-ng not found on PATH; announcements will fall back to stderr text.\n"
         );
     }
     const bucket = Sandbucket.wrap(sc);
