@@ -1,0 +1,13 @@
+{
+  "name": "@cobd/hook",
+  "version": "0.0.0",
+  "description": "Browser host page for @cobd/core. The small index.html that Electron (manila) or any other browser-capable shell loads to bootstrap the screen-reader core in a renderer.",
+  "license": "AGPL-3.0",
+  "main": "dist/index.html",
+  "scripts": {
+    "build": "echo \"Build pipeline lands with the Phase C esbuild config\" && exit 0"
+  },
+  "dependencies": {
+    "@cobd/core": "*"
+  }
+}
