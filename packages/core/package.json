@@ -1,13 +1,16 @@
 {
   "name": "@cobd/core",
   "version": "1.0.0",
-  "description": "Shell-agnostic screen-reader core. Driven by a Transport (host-supplied); runs in any browser or Node environment.",
+  "description": "Shell-agnostic screen-reader core. Wraps @cobd/sandbucket and exposes the navigation + state surface that hosts (manila, net, future web shells) drive.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "license": "AGPL-3.0",
   "scripts": {
     "build": "tsc"
+  },
+  "dependencies": {
+    "@cobd/sandbucket": "*"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

@@ -1,24 +1,18 @@
 // Hook bootstrap. Loaded by index.html in any
-// browser-capable shell. Today it just instantiates
-// a Reader against a placeholder Transport so we
-// can prove the wiring end-to-end in the bundled
-// output. Phase E swaps in a real Transport that
-// bridges to sandcastle (via Electron IPC inside
-// manila, or whatever transport a non-Electron host
-// supplies).
+// browser-capable shell. Today this is a placeholder
+// that just announces itself; real wiring lands in
+// Phase E.
+//
+// Why not import @cobd/core here?  Core depends on
+// @cobd/sandbucket which depends on @cobd/sandcastle,
+// which legitimately imports Node builtins
+// (child_process / fs) to spawn the *fin AX binary.
+// That spawn never runs in a browser -- manila's
+// main process owns it and forwards results via
+// IPC. To keep that work isolated until the spawn /
+// browser-safe split lands in @cobd/sandcastle, hook
+// stays import-free for now. Manila's renderer will
+// import @cobd/core through its own bundling
+// pipeline.
 
-import { Reader, type Transport } from "@cobd/core";
-
-const stubTransport: Transport = {
-    async request<T>(method: string): Promise<T> {
-        console.warn(`@cobd/hook: stub Transport got "${method}" with no host wiring`);
-        return {} as T;
-    },
-    on() {
-        return () => undefined;
-    },
-};
-
-Reader.start(stubTransport).then((reader) => {
-    console.log("@cobd/hook: Reader ready", reader);
-});
+console.log("@cobd/hook: ready");

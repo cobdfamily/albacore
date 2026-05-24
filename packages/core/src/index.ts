@@ -1,50 +1,80 @@
 // @cobd/core -- the shell-agnostic screen-reader
 // library. Runs in any TS/JS environment (browser
 // renderer via @cobd/hook, Node via @cobd/net, or
-// anywhere else with a compatible Transport).
+// anywhere else with a compatible Sandbucket).
 //
-// Core does NOT know how the underlying *fin AX
-// server is reached -- that wiring lives in the
-// host. The host passes in a Transport (see below)
-// and core drives the screen-reader logic on top
-// of it.
+// Core wraps a Sandbucket and exposes the navigation
+// + state surface that screen-reader logic builds
+// on. Phase E layers narration / key routing /
+// gesture state on top of this. For now Reader is
+// a thin surface (current node + move helpers) so
+// hosts can drive the wiring end-to-end.
 
-export interface Transport {
-    // Send a JSON-RPC request and resolve with its
-    // result. The host is responsible for matching
-    // ids and rejecting on protocol errors.
-    request<T = unknown>(method: string, params?: unknown): Promise<T>;
+import { Sandbucket, Element, App } from "@cobd/sandbucket";
 
-    // Subscribe to a server-emitted notification by
-    // name. Returns an unsubscribe handle. Multiple
-    // listeners per notification name are allowed.
-    on(name: string, handler: (params: unknown) => void): () => void;
-}
+export { Sandbucket, Element, App } from "@cobd/sandbucket";
 
-// Opaque handle for a node in the accessibility
-// tree. Treat as a string; the value is only
-// meaningful to the server that minted it.
-export type NodeHandle = string;
-
-// Skeleton Reader. Phase E expands this with
-// navigation state, output (speech) wiring, and
-// the input-to-action mapping. For now it's just
-// a thin pass-through over Transport so consumers
-// can verify the wiring end-to-end.
 export class Reader {
-    constructor(private transport: Transport) {}
+    private current: Element | null = null;
 
-    static async start(transport: Transport): Promise<Reader> {
-        return new Reader(transport);
+    private constructor(public readonly bucket: Sandbucket) {}
+
+    static async fromBucket(bucket: Sandbucket): Promise<Reader> {
+        const reader = new Reader(bucket);
+        reader.current = await bucket.focused();
+        return reader;
     }
 
-    async getRootHandle(): Promise<NodeHandle> {
-        const result = await this.transport.request<{ handle: NodeHandle }>("tree.getRoot");
-        return result.handle;
+    // Convenience for hosts that don't already own a
+    // Sandbucket. Spawns the platform *fin server,
+    // wraps it, and primes the cursor to the focused
+    // element. Hosts that need to manage the spawn
+    // lifecycle separately (manila's main process)
+    // should pass an existing Sandbucket via
+    // fromBucket().
+    static async start(): Promise<Reader> {
+        const bucket = await Sandbucket.start();
+        return Reader.fromBucket(bucket);
     }
 
-    async getFocusedHandle(): Promise<NodeHandle | null> {
-        const result = await this.transport.request<{ handle: NodeHandle | null }>("tree.getFocused");
-        return result.handle;
+    get cursor(): Element | null {
+        return this.current;
+    }
+
+    async moveToFocused(): Promise<Element | null> {
+        this.current = await this.bucket.focused();
+        return this.current;
+    }
+
+    async moveToFirstChild(): Promise<Element | null> {
+        if (!this.current) return null;
+        this.current = await this.current.firstChild();
+        return this.current;
+    }
+
+    async moveToParent(): Promise<Element | null> {
+        if (!this.current) return null;
+        this.current = await this.current.parent();
+        return this.current;
+    }
+
+    async moveToNextSibling(): Promise<Element | null> {
+        if (!this.current) return null;
+        this.current = await this.current.nextSibling();
+        return this.current;
+    }
+
+    async moveToPreviousSibling(): Promise<Element | null> {
+        if (!this.current) return null;
+        this.current = await this.current.previousSibling();
+        return this.current;
+    }
+
+    async activeApp(): Promise<App | null> {
+        return this.bucket.activeApp();
+    }
+
+    async stop(): Promise<void> {
+        await this.bucket.stop();
     }
 }
