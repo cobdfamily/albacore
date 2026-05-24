@@ -1,47 +1,50 @@
-// Tuna screen-reader Electron entry point.
+// @cobd/core -- the shell-agnostic screen-reader
+// library. Runs in any TS/JS environment (browser
+// renderer via @cobd/hook, Node via @cobd/net, or
+// anywhere else with a compatible Transport).
 //
-// Boots a hidden BrowserWindow that loads www/index.html
-// (the renderer-side screen reader UI), then wires
-// Ctrl+Shift+F12 and Ctrl+Shift+A as global shortcuts via
-// the Keyboard helper. The window stays hidden -- Tuna is
-// audio-first; the BrowserWindow is a host for the JS
-// runtime, not a visible UI.
+// Core does NOT know how the underlying *fin AX
+// server is reached -- that wiring lives in the
+// host. The host passes in a Transport (see below)
+// and core drives the screen-reader logic on top
+// of it.
 
-import { app, BrowserWindow, globalShortcut } from "electron";
-import { Keyboard } from "./keyboard";
-import path from "path";
+export interface Transport {
+    // Send a JSON-RPC request and resolve with its
+    // result. The host is responsible for matching
+    // ids and rejecting on protocol errors.
+    request<T = unknown>(method: string, params?: unknown): Promise<T>;
 
-
-function createWindow() {
-
-  const win = new BrowserWindow({
-    width: 800,
-    height: 600,
-show: false,
-    webPreferences: {
-preload: path.join( __dirname, 'www', 'preload.js' ),
-      nodeIntegration: true,
-    },
-  });
-  win.loadURL(
-`file://${__dirname}/www/index.html`
-  );
-
-const keyboard = new Keyboard( win );
-
-keyboard.registerShortcutWithModifier( 'f12', 'control+shift' );
-keyboard.registerShortcutWithModifier( 'a', 'control+shift' );
-
+    // Subscribe to a server-emitted notification by
+    // name. Returns an unsubscribe handle. Multiple
+    // listeners per notification name are allowed.
+    on(name: string, handler: (params: unknown) => void): () => void;
 }
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
 
+// Opaque handle for a node in the accessibility
+// tree. Treat as a string; the value is only
+// meaningful to the server that minted it.
+export type NodeHandle = string;
+
+// Skeleton Reader. Phase E expands this with
+// navigation state, output (speech) wiring, and
+// the input-to-action mapping. For now it's just
+// a thin pass-through over Transport so consumers
+// can verify the wiring end-to-end.
+export class Reader {
+    constructor(private transport: Transport) {}
+
+    static async start(transport: Transport): Promise<Reader> {
+        return new Reader(transport);
+    }
+
+    async getRootHandle(): Promise<NodeHandle> {
+        const result = await this.transport.request<{ handle: NodeHandle }>("tree.getRoot");
+        return result.handle;
+    }
+
+    async getFocusedHandle(): Promise<NodeHandle | null> {
+        const result = await this.transport.request<{ handle: NodeHandle | null }>("tree.getFocused");
+        return result.handle;
+    }
+}
