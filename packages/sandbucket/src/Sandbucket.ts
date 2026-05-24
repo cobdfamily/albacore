@@ -23,6 +23,23 @@ export class Sandbucket {
         return new Sandbucket(sandcastle);
     }
 
+    // Passthroughs to the host-info surface so
+    // consumers don't have to import @cobd/sandcastle
+    // alongside sandbucket. Sandbucket stays the
+    // one-stop shop: typed elements via activeApp /
+    // focused, host info via system / security.
+    get system(): Sandcastle["system"] {
+        return this.sandcastle.system;
+    }
+
+    get security(): Sandcastle["security"] {
+        return this.sandcastle.security;
+    }
+
+    get welcome(): Sandcastle["welcome"] {
+        return this.sandcastle.welcome;
+    }
+
     async activeApp(): Promise<App | null> {
         const root = await this.sandcastle.tree.getRoot();
         return root.handle ? new App(root.handle, this.sandcastle) : null;

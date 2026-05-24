@@ -2,10 +2,7 @@
 // stack. Spawns bluefin-server via @cobd/bluetide,
 // wraps it in @cobd/sandbucket + @cobd/core, then
 // dumps a one-pass status snapshot of whatever app
-// is currently frontmost. No interactive cursor
-// (cli.js used to do that; rewriting on the new
-// chain comes later) -- this is the first concrete
-// proof that the whole stack runs.
+// is currently frontmost.
 //
 // Run with `npm run demo` from this package. The
 // bluefin-server binary must be built first
@@ -17,21 +14,20 @@ import { Reader } from "@cobd/core";
 
 const main = async (): Promise<void> => {
     process.stderr.write("net: spawning bluefin-server...\n");
-    const sc = await Bluetide.start();
+    const bucket = Sandbucket.wrap(await Bluetide.start());
 
     process.stderr.write(
-        `net: connected to ${sc.welcome.server} ${sc.welcome.version}\n`
+        `net: connected to ${bucket.welcome.server} ${bucket.welcome.version}\n`
     );
 
     // Verify AX permission state up front so the
     // operator sees an explicit GRANTED / WARNING
     // line instead of "why are the names null?".
-    const { enabled } = await sc.system.isAccessibilityEnabled();
+    const { enabled } = await bucket.system.isAccessibilityEnabled();
     process.stderr.write(
         `net: accessibility ${enabled ? "GRANTED" : "WARNING -- NOT GRANTED"}\n`
     );
 
-    const bucket = Sandbucket.wrap(sc);
     const reader = await Reader.fromBucket(bucket);
 
     const app = await reader.activeApp();
@@ -52,7 +48,7 @@ const main = async (): Promise<void> => {
         process.stdout.write("Focused:    <nothing focused>\n");
     }
 
-    const battery = await sc.system.getBatteryStatus();
+    const battery = await bucket.system.getBatteryStatus();
     if (battery.isPresent && battery.percentage !== null) {
         const charging = battery.isCharging ? "charging" : "not charging";
         process.stdout.write(

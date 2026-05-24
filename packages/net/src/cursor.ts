@@ -168,8 +168,8 @@ class Cursor {
 
 const main = async (): Promise<void> => {
     process.stderr.write("net cursor: spawning bluefin-server...\n");
-    const sc = await Bluetide.start();
-    const { enabled } = await sc.system.isAccessibilityEnabled();
+    const bucket = Sandbucket.wrap(await Bluetide.start());
+    const { enabled } = await bucket.system.isAccessibilityEnabled();
     if (!enabled) {
         process.stderr.write(
             "net cursor: WARNING -- Accessibility NOT GRANTED. Tree will be empty.\n"
@@ -185,7 +185,6 @@ const main = async (): Promise<void> => {
             "net cursor: espeak/espeak-ng not found on PATH; announcements will fall back to stderr text.\n"
         );
     }
-    const bucket = Sandbucket.wrap(sc);
     const reader = await Reader.fromBucket(bucket);
 
     process.stderr.write(
