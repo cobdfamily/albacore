@@ -43,11 +43,11 @@ class MockProcess extends EventEmitter {
   }
 }
 
-test('start() resolves after welcome arrives', async () => {
+test('connect() resolves after welcome arrives', async () => {
   const proc = new MockProcess();
-  const started = Sandcastle.start({
-    binaryPath: '/mock/bluefin-server',
-    spawn: () => proc,
+  const started = Sandcastle.connect({
+    input: proc.stdout,
+    output: proc.stdin,
     welcomeTimeoutMs: 50
   });
 
@@ -58,13 +58,13 @@ test('start() resolves after welcome arrives', async () => {
   await sc.stop();
 });
 
-test("start() rejects if welcome doesn't arrive within the timeout", async () => {
+test("connect() rejects if welcome doesn't arrive within the timeout", async () => {
   const proc = new MockProcess();
 
   await assert.rejects(
-    Sandcastle.start({
-      binaryPath: '/mock/bluefin-server',
-      spawn: () => proc,
+    Sandcastle.connect({
+      input: proc.stdout,
+      output: proc.stdin,
       welcomeTimeoutMs: 10
     }),
     /Timed out waiting 10ms/
@@ -230,10 +230,27 @@ test('stop() kills the child and rejects in-flight promises', async () => {
 
 async function startMockSandcastle(): Promise<{ proc: MockProcess; sc: Sandcastle }> {
   const proc = new MockProcess();
-  const started = Sandcastle.start({
-    binaryPath: '/mock/bluefin-server',
-    spawn: () => proc,
-    welcomeTimeoutMs: 50
+  let exitResolve!: (value: { code: number | null; signal: string | null }) => void;
+  const exit = new Promise<{ code: number | null; signal: string | null }>((res) => {
+    exitResolve = res;
+  });
+  // MockProcess.kill emits 'exit'; bluetide wires that
+  // into the exit promise. Mirror the same hookup here
+  // so the tests exercise the connect() / exit /
+  // onStop contract that real callers use.
+  proc.once('exit', (code, signal) =>
+    exitResolve({ code: code as number | null, signal: signal as string | null })
+  );
+
+  const started = Sandcastle.connect({
+    input: proc.stdout,
+    output: proc.stdin,
+    welcomeTimeoutMs: 50,
+    onStop: () => {
+      proc.stdin.end();
+      proc.kill();
+    },
+    exit
   });
   proc.send(welcome);
   return { proc, sc: await started };

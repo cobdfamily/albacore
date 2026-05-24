@@ -1,12 +1,14 @@
-import { spawn as nodeSpawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { attributes } from './attributes.js';
 
 export { attributes } from './attributes.js';
+
+// Sandcastle deliberately holds NO runtime Node
+// imports. Stream + child-process glue lives in
+// @cobd/bluetide (Node-only) so this module can be
+// bundled into a browser renderer that talks to
+// the *fin server via an IPC bridge instead of a
+// direct spawn.
 
 const PROTOCOL_VERSION = '0.1';
 const WELCOME_TIMEOUT_MS = 5_000;
@@ -100,25 +102,22 @@ type SubscriptionState = {
   ready: Promise<void>;
 };
 
-type SandcastleProcess = {
-  stdin: Writable;
-  stdout: Readable;
-  stderr?: Readable | null;
-  kill(signal?: NodeJS.Signals | number): boolean;
-  once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  once(event: 'error', listener: (error: Error) => void): unknown;
-  on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  on(event: 'error', listener: (error: Error) => void): unknown;
-  off(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  off(event: 'error', listener: (error: Error) => void): unknown;
-};
-
-type SpawnServer = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => SandcastleProcess;
-
-export type SandcastleStartOptions = {
-  binaryPath?: string;
-  spawn?: SpawnServer;
+// What bluetide (or any other Node host) passes
+// into Sandcastle.connect. Sandcastle reads
+// JSON-RPC lines from `input`, writes them to
+// `output`, and uses `onStop` to tear down the
+// underlying transport (typically: end stdin and
+// kill the child). `exit` is an optional Promise
+// that, when it resolves, means the underlying
+// transport has gone away -- Sandcastle uses it to
+// reject any in-flight requests with a descriptive
+// error.
+export type SandcastleConnectOptions = {
+  input: Readable;
+  output: Writable;
   welcomeTimeoutMs?: number;
+  onStop?: () => void | Promise<void>;
+  exit?: Promise<{ code: number | null; signal: string | null }>;
 };
 
 export type RawTreeApi = {
@@ -171,7 +170,9 @@ export class Sandcastle {
   readonly security: SecurityApi;
   readonly normalized: NormalizedApi;
 
-  #child: SandcastleProcess;
+  #input: Readable;
+  #output: Writable;
+  #onStop?: () => void | Promise<void>;
   #nextId = 1;
   #pending = new Map<number, PendingRequest>();
   #buffer = '';
@@ -180,8 +181,15 @@ export class Sandcastle {
   #wildcardListeners = new Set<Listener>();
   #subscriptions = new Map<string, SubscriptionState>();
 
-  private constructor(child: SandcastleProcess, welcome: WelcomeMetadata) {
-    this.#child = child;
+  private constructor(
+    input: Readable,
+    output: Writable,
+    welcome: WelcomeMetadata,
+    onStop?: () => void | Promise<void>
+  ) {
+    this.#input = input;
+    this.#output = output;
+    this.#onStop = onStop;
     this.welcome = welcome;
 
     this.tree = {
@@ -247,23 +255,35 @@ export class Sandcastle {
     };
   }
 
-  static async start(options: SandcastleStartOptions = {}): Promise<Sandcastle> {
-    const binaryPath = options.binaryPath ?? resolveFinServerPath();
-    const spawnServer = options.spawn ?? defaultSpawnServer;
-    const child = spawnServer(binaryPath, [], { stdio: 'pipe' });
-    const welcome = await waitForWelcome(child, options.welcomeTimeoutMs ?? WELCOME_TIMEOUT_MS);
-    const sandcastle = new Sandcastle(child, welcome);
-    sandcastle.#attachRuntimeHandlers();
+  // Bring an already-running *fin server's stdio
+  // online. Bluetide (or whatever wired up the
+  // transport) hands us streams; we wait for the
+  // welcome notification, then return a connected
+  // Sandcastle.
+  static async connect(options: SandcastleConnectOptions): Promise<Sandcastle> {
+    const welcome = await waitForWelcome(
+      options.input,
+      options.exit,
+      options.welcomeTimeoutMs ?? WELCOME_TIMEOUT_MS
+    );
+    const sandcastle = new Sandcastle(
+      options.input,
+      options.output,
+      welcome,
+      options.onStop
+    );
+    sandcastle.#attachRuntimeHandlers(options.exit);
     return sandcastle;
   }
 
-  stop(): Promise<void> {
-    if (this.#stopped) return Promise.resolve();
+  async stop(): Promise<void> {
+    if (this.#stopped) return;
     this.#stopped = true;
     this.#rejectPending(new Error('Sandcastle stopped before the request completed.'));
-    this.#child.stdin.end();
-    this.#child.kill();
-    return Promise.resolve();
+    // The host (bluetide / IPC bridge) decides what
+    // "stop" means -- kill the child, close the
+    // socket, etc. Sandcastle just stops reading.
+    if (this.#onStop) await this.#onStop();
   }
 
   subscribe(events: string[]): Promise<SubscribeResult> {
@@ -341,16 +361,22 @@ export class Sandcastle {
       .catch(() => undefined);
   }
 
-  #attachRuntimeHandlers(): void {
-    this.#child.stdout.on('data', (chunk: Buffer | string) => this.#acceptData(chunk));
-    this.#child.on('exit', (code, signal) => {
-      if (this.#stopped) return;
-      this.#stopped = true;
-      this.#rejectPending(new Error(`bluefin-server exited before completing pending requests (code ${code ?? 'null'}, signal ${signal ?? 'null'}).`));
-    });
-    this.#child.on('error', (error) => {
-      this.#rejectPending(error);
-    });
+  #attachRuntimeHandlers(exit?: Promise<{ code: number | null; signal: string | null }>): void {
+    this.#input.on('data', (chunk: Buffer | string) => this.#acceptData(chunk));
+    this.#input.on('error', (error: Error) => this.#rejectPending(error));
+    this.#output.on('error', (error: Error) => this.#rejectPending(error));
+    if (exit) {
+      exit.then(({ code, signal }) => {
+        if (this.#stopped) return;
+        this.#stopped = true;
+        this.#rejectPending(new Error(
+          `bluefin-server exited before completing pending requests ` +
+          `(code ${code ?? 'null'}, signal ${signal ?? 'null'}).`
+        ));
+      }).catch((error: unknown) => {
+        this.#rejectPending(error);
+      });
+    }
   }
 
   #request<T>(method: string, params?: JsonObject): Promise<T> {
@@ -368,7 +394,7 @@ export class Sandcastle {
         reject: rejectRequest
       });
 
-      this.#child.stdin.write(`${JSON.stringify(request)}\n`, (error?: Error | null) => {
+      this.#output.write(`${JSON.stringify(request)}\n`, (error?: Error | null) => {
         if (!error) return;
         this.#pending.delete(id);
         rejectRequest(error);
@@ -443,57 +469,11 @@ export class SandcastleRpcError extends Error {
   }
 }
 
-// Maps Node's process.platform string to the
-// *fin server binary built for it. process.platform
-// uses 'win32' (not 'windows'), 'darwin' for macOS,
-// and 'linux' for Linux -- those are the only three
-// the Albacore stack targets today.
-const FIN_BY_PLATFORM: Record<string, string> = {
-  darwin: 'bluefin-server',
-  linux: 'blackfin-server',
-  win32: 'skipjack-server.exe'
-};
-
-export function resolveFinServerPath(): string {
-  if (process.env.FIN_SERVER_PATH) {
-    return process.env.FIN_SERVER_PATH;
-  }
-  // Legacy alias kept while existing dev muscle
-  // memory still types BLUEFIN_SERVER_PATH. Remove
-  // when nothing in the workspace references it.
-  if (process.env.BLUEFIN_SERVER_PATH) {
-    return process.env.BLUEFIN_SERVER_PATH;
-  }
-
-  const binary = FIN_BY_PLATFORM[process.platform];
-  if (!binary) {
-    throw new Error(
-      `No *fin server is wired up for platform "${process.platform}". ` +
-      `Supported: ${Object.keys(FIN_BY_PLATFORM).join(', ')}.`
-    );
-  }
-
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const packageDir = moduleDir.endsWith('/src') || moduleDir.endsWith('/dist') ? dirname(moduleDir) : moduleDir;
-  // Consolidated Tuna/bluefin layout has the Swift
-  // package under bluefin/swift/. The legacy
-  // bluefin-swift sibling no longer exists post-
-  // merge.
-  const devPath = resolve(packageDir, '../../../bluefin/swift/.build/debug', binary);
-  if (existsSync(devPath)) return devPath;
-
-  throw new Error(
-    `Could not find ${binary} for platform "${process.platform}". ` +
-    `Searched: ${devPath}. ` +
-    `Build the *fin server or set FIN_SERVER_PATH to override.`
-  );
-}
-
-function defaultSpawnServer(command: string, args: string[], options: SpawnOptionsWithoutStdio): ChildProcessWithoutNullStreams {
-  return nodeSpawn(command, args, options);
-}
-
-function waitForWelcome(child: SandcastleProcess, timeoutMs: number): Promise<WelcomeMetadata> {
+function waitForWelcome(
+  input: Readable,
+  exit: Promise<{ code: number | null; signal: string | null }> | undefined,
+  timeoutMs: number
+): Promise<WelcomeMetadata> {
   let buffer = '';
   let settled = false;
 
@@ -507,9 +487,8 @@ function waitForWelcome(child: SandcastleProcess, timeoutMs: number): Promise<We
 
     const cleanup = () => {
       clearTimeout(timer);
-      child.stdout.off('data', onData);
-      child.off?.('exit', onExit);
-      child.off?.('error', onError);
+      input.off('data', onData);
+      input.off('error', onError);
     };
 
     const settleReject = (error: Error) => {
@@ -524,10 +503,6 @@ function waitForWelcome(child: SandcastleProcess, timeoutMs: number): Promise<We
       settled = true;
       cleanup();
       resolveWelcome(welcome);
-    };
-
-    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      settleReject(new Error(`bluefin-server exited before welcome (code ${code ?? 'null'}, signal ${signal ?? 'null'}).`));
     };
 
     const onError = (error: Error) => settleReject(error);
@@ -563,9 +538,16 @@ function waitForWelcome(child: SandcastleProcess, timeoutMs: number): Promise<We
       }
     };
 
-    child.stdout.on('data', onData);
-    child.once('exit', onExit);
-    child.once('error', onError);
+    input.on('data', onData);
+    input.on('error', onError);
+    exit?.then(({ code, signal }) =>
+      settleReject(new Error(
+        `bluefin-server exited before welcome ` +
+        `(code ${code ?? 'null'}, signal ${signal ?? 'null'}).`
+      ))
+    ).catch((error: unknown) =>
+      settleReject(error instanceof Error ? error : new Error(String(error)))
+    );
   });
 }
 
