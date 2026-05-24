@@ -15,6 +15,46 @@ export class App extends Element {
         super(handle, sandcastle);
     }
 
+    // The application element is the root of its AX
+    // tree -- it never has a parent. Overriding so
+    // callers walking up don't fall off into the
+    // system-wide element (which we deliberately
+    // don't expose).
+    async parent(): Promise<Element | null> {
+        return null;
+    }
+
+    // Whatever the app currently considers focused.
+    // The same data the cursor lands on after a
+    // `r`efocus -- but reachable from an App handle
+    // without going back through Sandbucket.
+    async activeElement(): Promise<Element | null> {
+        const { value } = await this.sandcastle.node.getAttribute(
+            this.handle, "AXFocusedUIElement"
+        );
+        return typeof value === "string" ? new Element(value, this.sandcastle) : null;
+    }
+
+    // Set focus to an element inside this app. Ports
+    // the legacy UIApp.activeElement setter: if the
+    // target is a window, raise it; otherwise raise
+    // the enclosing window first, then point the
+    // app's AXFocusedUIElement at the target. The
+    // window-raise matters because focusing a
+    // background-window descendant otherwise does
+    // nothing visible to the user.
+    async setActiveElement(element: Element): Promise<void> {
+        if ((await element.role()) === "window") {
+            await element.invoke("AXRaise");
+        } else {
+            const window = await element.window();
+            if (window) await window.invoke("AXRaise");
+        }
+        await this.sandcastle.node.setAttribute(
+            this.handle, "AXFocusedUIElement", element.handle
+        );
+    }
+
     // Walk a path like ["window#0", "button#2"] of
     // (role, index) segments from this app's root.
     // Returns the element if every segment resolves;

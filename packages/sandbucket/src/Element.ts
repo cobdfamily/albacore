@@ -18,7 +18,7 @@ import type { Sandcastle } from "@cobd/sandcastle";
 export class Element {
     constructor(
         public readonly handle: string,
-        private readonly sandcastle: Sandcastle
+        protected readonly sandcastle: Sandcastle
     ) {}
 
     async getAttribute(name: string): Promise<unknown> {
@@ -75,6 +75,73 @@ export class Element {
         await this.sandcastle.node.invokeAction(this.handle, action);
     }
 
+    // Raw AX attribute names this element supports.
+    // Ports the legacy UIElement.getAttributeNames; use
+    // it when you need to discover what's actually
+    // queryable on a given node before asking for it.
+    async getAttributeNames(): Promise<string[]> {
+        const result = await this.sandcastle.node.getAttributeNames(this.handle);
+        return result.names;
+    }
+
+    // The enclosing AXWindow ancestor (eg. the
+    // window that contains a button). Returns null
+    // when the element has no AXWindow attribute
+    // (the application root, menu-bar items, etc).
+    async window(): Promise<Element | null> {
+        const { value } = await this.sandcastle.node.getAttribute(this.handle, "AXWindow");
+        return typeof value === "string" ? new Element(value, this.sandcastle) : null;
+    }
+
+    // Move keyboard focus to this element. Equivalent
+    // to AXFocused = true on the wire. The legacy
+    // UIElement.focus mutated a global UIManager;
+    // sandbucket has no global state -- focus is now
+    // a plain AX operation, and any screen-reader
+    // tracking layer can watch the resulting
+    // AXFocusedUIElementChanged notification.
+    async focus(): Promise<void> {
+        await this.sandcastle.node.setAttribute(this.handle, "AXFocused", true);
+    }
+
+    // Children whose canonical role matches the
+    // given name. Equivalent of the legacy
+    // getChildrenWithPlatformRole but takes a
+    // CANONICAL role ("button") rather than a raw AX
+    // role ("AXButton"); sandcastle's normalization
+    // takes care of the translation.
+    async getChildrenWithRole(role: string): Promise<Element[]> {
+        const kids = await this.children();
+        const matched: Element[] = [];
+        for (const child of kids) {
+            if ((await child.role()) === role) matched.push(child);
+        }
+        return matched;
+    }
+
+    async hasSiblings(): Promise<boolean> {
+        const parent = await this.parent();
+        if (!parent) return false;
+        const kids = await parent.children();
+        return kids.length > 1;
+    }
+
+    // Geometry-based equality. Two elements with the
+    // same canonical role and the same (x, y) position
+    // are treated as the same node even if they have
+    // different opaque handles -- useful when the
+    // server re-mints a handle between queries and
+    // we want to know we're back where we started.
+    // Ported from the legacy UIElement.matchElements.
+    async sameAs(other: Element): Promise<boolean> {
+        const mine = await this.getAttributes(["role", "position", "size"]);
+        const theirs = await other.getAttributes(["role", "position", "size"]);
+        if (mine.role !== theirs.role) return false;
+        const positionMatch = samePoint(mine.position, theirs.position);
+        const sizeMatch = sameSize(mine.size, theirs.size);
+        return positionMatch && sizeMatch;
+    }
+
     // Walks the attribute hierarchy (name ->
     // description -> value) for the first non-empty
     // value and returns it with a trailing role word
@@ -115,4 +182,18 @@ export class Element {
 
         return "";
     }
+}
+
+function samePoint(a: unknown, b: unknown): boolean {
+    const p = a as { x?: number; y?: number } | undefined;
+    const q = b as { x?: number; y?: number } | undefined;
+    if (!p || !q) return false;
+    return p.x === q.x && p.y === q.y;
+}
+
+function sameSize(a: unknown, b: unknown): boolean {
+    const p = a as { width?: number; height?: number } | undefined;
+    const q = b as { width?: number; height?: number } | undefined;
+    if (!p || !q) return false;
+    return p.width === q.width && p.height === q.height;
 }
