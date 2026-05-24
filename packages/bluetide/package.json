@@ -1,0 +1,21 @@
+{
+  "name": "@cobd/bluetide",
+  "version": "0.0.0",
+  "description": "Node-only spawn layer for the *fin AX servers. Picks the right binary per platform, launches it as a child process, hooks its stdio, and hands the streams to @cobd/sandcastle for the protocol work.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "license": "AGPL-3.0",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test --import tsx test/*.test.ts"
+  },
+  "dependencies": {
+    "@cobd/sandcastle": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.6",
+    "tsx": "^4.20.5",
+    "typescript": "^5.6.3"
+  }
+}
