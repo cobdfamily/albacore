@@ -149,6 +149,7 @@ export class Sandcastle {
   #buffer = '';
   #stopped = false;
   #listeners = new Map<string, Set<Listener>>();
+  #wildcardListeners = new Set<Listener>();
   #subscriptions = new Map<string, SubscriptionState>();
 
   private constructor(child: SandcastleProcess, welcome: WelcomeMetadata) {
@@ -235,6 +236,19 @@ export class Sandcastle {
     return () => {
       removeLocalListener();
       this.#releaseSubscription(name);
+    };
+  }
+
+  // Tap every notification that arrives, regardless
+  // of name. Does NOT auto-subscribe to anything --
+  // wildcard listeners only see events that some
+  // other caller has already asked the server to
+  // forward via on()/subscribe(). Intended for
+  // observability and debug logging.
+  onAny(listener: Listener): () => void {
+    this.#wildcardListeners.add(listener);
+    return () => {
+      this.#wildcardListeners.delete(listener);
     };
   }
 
@@ -356,8 +370,12 @@ export class Sandcastle {
   #acceptNotification(message: JsonRpcNotification): void {
     if (message.method !== 'axEvent' || !isRawAxEvent(message.params)) return;
     const listeners = this.#listeners.get(message.params.name);
-    if (!listeners) return;
-    for (const listener of listeners) listener(message.params);
+    if (listeners) {
+      for (const listener of listeners) listener(message.params);
+    }
+    for (const wildcard of this.#wildcardListeners) {
+      wildcard(message.params);
+    }
   }
 
   #rejectPending(error: unknown): void {

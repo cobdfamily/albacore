@@ -142,6 +142,42 @@ test('notifications dispatch to registered listeners', async () => {
   await sc.stop();
 });
 
+test('onAny taps every notification regardless of name', async () => {
+  const { proc, sc } = await startMockSandcastle();
+  const tapped: unknown[] = [];
+
+  // Need at least one named subscription to make the
+  // server forward the event in the first place;
+  // onAny does NOT auto-subscribe, it only observes.
+  const off = sc.on('AXFocusedUIElementChanged', () => undefined);
+  const offAny = sc.onAny((event) => tapped.push(event));
+
+  proc.send({
+    jsonrpc: '2.0',
+    method: 'axEvent',
+    params: {
+      name: 'AXFocusedUIElementChanged',
+      handle: 'node:a'
+    }
+  });
+  proc.send({
+    jsonrpc: '2.0',
+    method: 'axEvent',
+    params: {
+      name: 'AXValueChanged',
+      handle: 'node:b'
+    }
+  });
+
+  assert.equal(tapped.length, 2);
+  assert.equal((tapped[0] as { name: string }).name, 'AXFocusedUIElementChanged');
+  assert.equal((tapped[1] as { name: string }).name, 'AXValueChanged');
+
+  offAny();
+  off();
+  await sc.stop();
+});
+
 test('normalized getAttributes translates names and role values', async () => {
   attributes.roleMap.AXButton = 'button';
   const { proc, sc } = await startMockSandcastle();
