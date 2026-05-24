@@ -38,7 +38,9 @@ const boundaryCue = fileURLToPath(
 );
 
 const boundary = async (): Promise<void> => {
-    process.stdout.write("(boundary)\n");
+    // Audio-only: a screen-reader user already
+    // hears the cue; printing "(boundary)" on top
+    // is just text-mode noise.
     await audio.play(boundaryCue);
 };
 
