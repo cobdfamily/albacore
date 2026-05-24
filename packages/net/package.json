@@ -8,7 +8,8 @@
     "net": "src/net.ts"
   },
   "scripts": {
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "cursor": "tsx src/cursor.ts"
   },
   "dependencies": {
     "@cobd/bluetide": "*",
