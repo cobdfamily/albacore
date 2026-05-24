@@ -17,20 +17,25 @@
 // noise to a blind user; the announce-points are
 // elements that actually carry a choice.
 //
-// Output is plain text per line. A boundary hit
-// (no parent / no sibling) writes "<bell>" (ASCII 7)
-// plus "(boundary)" so the terminal beeps and the
-// reason is legible.
+// Boundaries (no parent / no sibling) play a short
+// low square-wave tone through the @cobd/net audio
+// shim, which spawns ffplay under the hood.
 
 import { Bluetide } from "@cobd/bluetide";
 import { Sandbucket, type Element } from "@cobd/sandbucket";
 import { Reader } from "@cobd/core";
+import { AudioContext, audioBackend } from "./audio.js";
 
-const BELL = "";
+const audio = new AudioContext();
+
+const boundary = async (): Promise<void> => {
+    process.stdout.write("(boundary)\n");
+    await audio.beep({ frequency: 220, durationMs: 80, type: "square" });
+};
 
 const announce = async (element: Element | null): Promise<void> => {
     if (!element) {
-        process.stdout.write(`${BELL}(boundary)\n`);
+        await boundary();
         return;
     }
     const label = (await element.computeLabel()) || "<no label>";
@@ -52,13 +57,6 @@ const findAncestorWithSiblings = async (element: Element): Promise<Element | nul
     return findAncestorWithSiblings(parent);
 };
 
-const descendThroughSingletons = async (element: Element | null): Promise<Element | null> => {
-    if (!element) return null;
-    const children = await element.children();
-    if (children.length !== 1) return element;
-    return descendThroughSingletons(children[0]);
-};
-
 class Cursor {
     constructor(private readonly reader: Reader) {}
 
@@ -74,13 +72,13 @@ class Cursor {
     async up(): Promise<void> {
         const current = this.reader.cursor;
         if (!current) {
-            await announce(null);
+            await boundary();
             return;
         }
         const ancestor = await findAncestorWithSiblings(current);
         const parent = ancestor ? await ancestor.parent() : null;
         if (!parent) {
-            await announce(null);
+            await boundary();
             return;
         }
         await this.reader.moveToParent();
@@ -90,19 +88,17 @@ class Cursor {
     async down(): Promise<void> {
         const current = this.reader.cursor;
         if (!current) {
-            await announce(null);
+            await boundary();
             return;
         }
         const first = await current.firstChild();
-        const target = await descendThroughSingletons(first);
-        if (!target) {
-            await announce(null);
+        if (!first) {
+            await boundary();
             return;
         }
         await this.reader.moveToFirstChild();
-        // moveToFirstChild only steps once; walk
-        // through any singleton chain manually so the
-        // cursor lands on a decision point.
+        // Walk through any singleton chain manually so
+        // the cursor lands on a decision point.
         let here = this.reader.cursor;
         while (here) {
             const kids = await here.children();
@@ -116,7 +112,7 @@ class Cursor {
     async right(): Promise<void> {
         const next = this.reader.cursor ? await this.reader.cursor.nextSibling() : null;
         if (!next) {
-            await announce(null);
+            await boundary();
             return;
         }
         await this.reader.moveToNextSibling();
@@ -126,7 +122,7 @@ class Cursor {
     async left(): Promise<void> {
         const prev = this.reader.cursor ? await this.reader.cursor.previousSibling() : null;
         if (!prev) {
-            await announce(null);
+            await boundary();
             return;
         }
         await this.reader.moveToPreviousSibling();
@@ -139,7 +135,14 @@ const main = async (): Promise<void> => {
     const sc = await Bluetide.start();
     const { enabled } = await sc.system.isAccessibilityEnabled();
     if (!enabled) {
-        process.stderr.write("net cursor: WARNING -- Accessibility NOT GRANTED. Tree will be empty.\n");
+        process.stderr.write(
+            "net cursor: WARNING -- Accessibility NOT GRANTED. Tree will be empty.\n"
+        );
+    }
+    if (!audioBackend.ffplay) {
+        process.stderr.write(
+            "net cursor: ffplay not found on PATH; boundary beeps will fall back to terminal bell.\n"
+        );
     }
     const bucket = Sandbucket.wrap(sc);
     const reader = await Reader.fromBucket(bucket);
@@ -186,7 +189,9 @@ const main = async (): Promise<void> => {
                 default: break;
             }
         } catch (error) {
-            process.stderr.write(`net cursor: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.stderr.write(
+                `net cursor: ${error instanceof Error ? error.message : String(error)}\n`
+            );
         } finally {
             busy = false;
         }
@@ -196,6 +201,8 @@ const main = async (): Promise<void> => {
 };
 
 main().catch((error) => {
-    process.stderr.write(`net cursor: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+        `net cursor: ${error instanceof Error ? error.message : String(error)}\n`
+    );
     process.exit(1);
 });
