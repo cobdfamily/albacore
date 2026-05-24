@@ -202,7 +202,7 @@ export class Sandcastle {
   }
 
   static async start(options: SandcastleStartOptions = {}): Promise<Sandcastle> {
-    const binaryPath = options.binaryPath ?? resolveBluefinServerPath();
+    const binaryPath = options.binaryPath ?? resolveFinServerPath();
     const spawnServer = options.spawn ?? defaultSpawnServer;
     const child = spawnServer(binaryPath, [], { stdio: 'pipe' });
     const welcome = await waitForWelcome(child, options.welcomeTimeoutMs ?? WELCOME_TIMEOUT_MS);
@@ -380,17 +380,56 @@ export class SandcastleRpcError extends Error {
   }
 }
 
-export function resolveBluefinServerPath(): string {
+// Maps Node's process.platform string to the
+// *fin server binary built for it. process.platform
+// uses 'win32' (not 'windows'), 'darwin' for macOS,
+// and 'linux' for Linux -- those are the only three
+// the Albacore stack targets today.
+const FIN_BY_PLATFORM: Record<string, string> = {
+  darwin: 'bluefin-server',
+  linux: 'blackfin-server',
+  win32: 'skipjack-server.exe'
+};
+
+export function resolveFinServerPath(): string {
+  if (process.env.FIN_SERVER_PATH) {
+    return process.env.FIN_SERVER_PATH;
+  }
+  // Legacy alias kept while existing dev muscle
+  // memory still types BLUEFIN_SERVER_PATH. Remove
+  // when nothing in the workspace references it.
   if (process.env.BLUEFIN_SERVER_PATH) {
     return process.env.BLUEFIN_SERVER_PATH;
   }
 
+  const binary = FIN_BY_PLATFORM[process.platform];
+  if (!binary) {
+    throw new Error(
+      `No *fin server is wired up for platform "${process.platform}". ` +
+      `Supported: ${Object.keys(FIN_BY_PLATFORM).join(', ')}.`
+    );
+  }
+
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageDir = moduleDir.endsWith('/src') || moduleDir.endsWith('/dist') ? dirname(moduleDir) : moduleDir;
-  const devPath = resolve(packageDir, '../../../bluefin-swift/.build/debug/bluefin-server');
-  if (existsSync(devPath)) return devPath;
+  // Search order: the consolidated `bluefin` repo
+  // (post-merge home of all *fin Swift binaries),
+  // then the legacy bluefin-swift path. Once the
+  // bluefin-swift -> bluefin merge lands the legacy
+  // fallback can be deleted.
+  const candidates = [
+    resolve(packageDir, '../../../bluefin/.build/debug', binary),
+    resolve(packageDir, '../../../bluefin-swift/.build/debug', binary)
+  ];
+  for (const path of candidates) {
+    if (existsSync(path)) return path;
+  }
 
-  throw new Error('Could not resolve bluefin-server. Build Tuna/bluefin-swift or set BLUEFIN_SERVER_PATH to the bluefin-server binary.');
+  throw new Error(
+    `Could not find ${binary} for platform "${process.platform}". ` +
+    `Searched: ${candidates.join(', ')}. ` +
+    `Build the *fin server or set FIN_SERVER_PATH to override.`
+  );
 }
 
 function defaultSpawnServer(command: string, args: string[], options: SpawnOptionsWithoutStdio): ChildProcessWithoutNullStreams {
