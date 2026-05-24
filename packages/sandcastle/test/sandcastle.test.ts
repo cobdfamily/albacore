@@ -191,7 +191,7 @@ test('normalized getAttributes translates names and role values', async () => {
     method: 'node.getAttributes',
     params: {
       handle: 'node:1',
-      names: ['AXTitle', 'AXDescription', 'AXRole']
+      names: ['AXTitle', 'AXDescription', 'AXRoleDescription', 'AXRole']
     }
   });
 

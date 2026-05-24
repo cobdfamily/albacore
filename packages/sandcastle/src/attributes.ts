@@ -13,9 +13,20 @@ export const rawToCanonicalAttribute = {
   AXTitle: 'name',
   AXDescription: 'description',
   AXHelp: 'description',
+  // macOS title-bar buttons (close, minimize, full-
+  // screen) carry their user-facing label here, not
+  // in AXTitle or AXDescription. Map it so the
+  // computeLabel chain finds something to say.
+  AXRoleDescription: 'roleDescription',
   AXValue: 'value',
   AXPlaceholderValue: 'placeholder',
   AXRole: 'role',
+  // Subrole is the precise kind: AXCloseButton,
+  // AXMinimizeButton, AXFullScreenButton, AXSearchField,
+  // etc. Worth exposing so screen-reader logic can
+  // special-case (eg. distinct chimes per traffic-
+  // light button).
+  AXSubrole: 'subrole',
   AXChildren: 'children',
   AXParent: 'parent',
   AXDisclosureLevel: 'level',
@@ -29,8 +40,15 @@ export const rawToCanonicalAttribute = {
 
 // TODO(v0.2): expand fallback chains for platform-specific equivalents.
 export const canonicalToRawAttributes = {
-  name: ['AXTitle', 'AXDescription'],
+  // AXRoleDescription is the last-ditch label for
+  // buttons that ship with no AXTitle and no
+  // AXDescription (the title-bar set: close,
+  // minimize, full screen). Without it computeLabel
+  // returns "" and TTS announces just the role.
+  name: ['AXTitle', 'AXDescription', 'AXRoleDescription'],
   description: ['AXDescription', 'AXHelp'],
+  roleDescription: ['AXRoleDescription'],
+  subrole: ['AXSubrole'],
   value: ['AXValue'],
   placeholder: ['AXPlaceholderValue'],
   role: ['AXRole'],
@@ -100,7 +118,14 @@ export function normalize(rawAttrs: RawAttributes): NormalizedAttributes {
 
     assignIfPresent(normalized, canonicalName, value);
 
-    if (rawName === 'AXDescription' && !hasMeaningfulValue(normalized.name)) {
+    // Fallback chain for `name` when AXTitle was
+    // empty or absent. Order matches the priority
+    // we want a screen reader to announce:
+    //   AXTitle > AXDescription > AXRoleDescription.
+    if (
+      (rawName === 'AXDescription' || rawName === 'AXRoleDescription') &&
+      !hasMeaningfulValue(normalized.name)
+    ) {
       assignIfPresent(normalized, 'name', value);
     }
   }
