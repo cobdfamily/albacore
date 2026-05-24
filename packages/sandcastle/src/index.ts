@@ -430,22 +430,16 @@ export function resolveFinServerPath(): string {
 
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageDir = moduleDir.endsWith('/src') || moduleDir.endsWith('/dist') ? dirname(moduleDir) : moduleDir;
-  // Search order: the consolidated `bluefin` repo
-  // (post-merge home of all *fin Swift binaries),
-  // then the legacy bluefin-swift path. Once the
-  // bluefin-swift -> bluefin merge lands the legacy
-  // fallback can be deleted.
-  const candidates = [
-    resolve(packageDir, '../../../bluefin/.build/debug', binary),
-    resolve(packageDir, '../../../bluefin-swift/.build/debug', binary)
-  ];
-  for (const path of candidates) {
-    if (existsSync(path)) return path;
-  }
+  // Consolidated Tuna/bluefin layout has the Swift
+  // package under bluefin/swift/. The legacy
+  // bluefin-swift sibling no longer exists post-
+  // merge.
+  const devPath = resolve(packageDir, '../../../bluefin/swift/.build/debug', binary);
+  if (existsSync(devPath)) return devPath;
 
   throw new Error(
     `Could not find ${binary} for platform "${process.platform}". ` +
-    `Searched: ${candidates.join(', ')}. ` +
+    `Searched: ${devPath}. ` +
     `Build the *fin server or set FIN_SERVER_PATH to override.`
   );
 }
