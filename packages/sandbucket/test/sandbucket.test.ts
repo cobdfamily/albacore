@@ -24,6 +24,12 @@ function stubSandcastle(opts: {
     };
 
     const sc = {
+        welcome: {
+            protocol: "0.1",
+            server: "bluefin-swift",
+            version: "0.1.0",
+            capabilities: {}
+        },
         tree: {
             getRoot: () => record("tree.getRoot", [], { handle: "node:root" }),
             getFocused: () => record("tree.getFocused", [], { handle: "node:focus" }),
@@ -186,6 +192,12 @@ test("App.resolveAtPath walks the (role, index) segments", async () => {
     };
 
     const sc = {
+        welcome: {
+            protocol: "0.1",
+            server: "bluefin-swift",
+            version: "0.1.0",
+            capabilities: {}
+        },
         tree: {
             getRoot: () => Promise.resolve({ handle: "node:root" }),
             getFocused: () => Promise.resolve({ handle: null })
