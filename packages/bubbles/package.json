@@ -5,5 +5,9 @@
   "license": "AGPL-3.0",
   "files": [
     "assets"
-  ]
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    "./assets/*": "./assets/*"
+  }
 }

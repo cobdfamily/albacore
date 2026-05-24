@@ -85,6 +85,55 @@ export class OscillatorNode {
     }
 }
 
+export class AudioBuffer {
+    constructor(public readonly path: string) {}
+}
+
+export class AudioBufferSourceNode {
+    buffer: AudioBuffer | null = null;
+
+    private child: ChildProcess | null = null;
+    private connected: AudioDestination[] = [];
+    private exit: Promise<void> = Promise.resolve();
+
+    connect(destination: AudioDestination): this {
+        this.connected.push(destination);
+        return this;
+    }
+
+    start(): void {
+        if (this.child || !this.buffer) return;
+        if (this.connected.length === 0) return;
+        if (!HAS_FFPLAY) {
+            process.stderr.write(BELL);
+            return;
+        }
+        this.child = spawn(
+            "ffplay",
+            ["-nodisp", "-autoexit", "-loglevel", "quiet", this.buffer.path],
+            { stdio: "ignore" }
+        );
+        this.exit = new Promise((resolve) => {
+            this.child?.once("exit", () => resolve());
+        });
+    }
+
+    stop(): void {
+        if (!this.child) return;
+        this.child.kill();
+        this.child = null;
+    }
+
+    // Resolves when the spawned ffplay exits (file
+    // finished, or stop() was called). Useful when
+    // a caller wants the screen reader to wait for
+    // the cue to finish before announcing the next
+    // node.
+    finished(): Promise<void> {
+        return this.exit;
+    }
+}
+
 export class AudioContext {
     readonly destination = new AudioDestination();
 
@@ -92,11 +141,33 @@ export class AudioContext {
         return new OscillatorNode();
     }
 
+    // Web Audio takes an ArrayBuffer here and decodes
+    // it in-process; the shim takes a file path and
+    // hands it to ffplay at start() time instead.
+    decodeAudioData(path: string): Promise<AudioBuffer> {
+        return Promise.resolve(new AudioBuffer(path));
+    }
+
+    createBufferSource(): AudioBufferSourceNode {
+        return new AudioBufferSourceNode();
+    }
+
+    // Convenience: play a file end-to-end and await
+    // ffplay's exit. Internally a one-shot
+    // AudioBufferSourceNode.
+    async play(path: string): Promise<void> {
+        const buffer = await this.decodeAudioData(path);
+        const source = this.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.destination);
+        source.start();
+        await source.finished();
+    }
+
     // Convenience for the common "beep for N ms"
-    // case. Not part of Web Audio's surface, but
-    // the shim's actual job today is "make a short
-    // tone happen" and threading start/stop +
-    // timeouts at every call site is friction.
+    // synthesized-tone case. Kept alongside play()
+    // so consumers that just want a sine ping don't
+    // need an asset file.
     async beep(
         options: { frequency?: number; durationMs?: number; type?: OscillatorNode["type"] } = {}
     ): Promise<void> {

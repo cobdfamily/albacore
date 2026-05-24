@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@cobd/bluetide": "*",
+    "@cobd/bubbles": "*",
     "@cobd/core": "*",
     "@cobd/sandbucket": "*"
   },

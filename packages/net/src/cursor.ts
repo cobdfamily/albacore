@@ -21,16 +21,25 @@
 // low square-wave tone through the @cobd/net audio
 // shim, which spawns ffplay under the hood.
 
+import { fileURLToPath } from "node:url";
 import { Bluetide } from "@cobd/bluetide";
 import { Sandbucket, type Element } from "@cobd/sandbucket";
 import { Reader } from "@cobd/core";
 import { AudioContext, audioBackend } from "./audio.js";
 
 const audio = new AudioContext();
+// Boundary cue lives in @cobd/bubbles (the shared
+// asset bundle). import.meta.resolve walks the
+// workspace symlink to the real on-disk path; we
+// preload it so each boundary hit doesn't repay the
+// resolve cost.
+const boundaryCue = fileURLToPath(
+    import.meta.resolve("@cobd/bubbles/assets/command.m4a")
+);
 
 const boundary = async (): Promise<void> => {
     process.stdout.write("(boundary)\n");
-    await audio.beep({ frequency: 220, durationMs: 80, type: "square" });
+    await audio.play(boundaryCue);
 };
 
 const announce = async (element: Element | null): Promise<void> => {
