@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+.DS_Store
+
+# Playwright / session state (auth cookies — never commit)
+sessions/
+playwright/auth/
+.playwright/
+*_session.json
+storage-state.json
