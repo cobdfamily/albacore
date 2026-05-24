@@ -1,0 +1,19 @@
+{
+  "name": "@cobd/sandcastle",
+  "version": "0.0.0",
+  "description": "Per-platform launcher for the *fin AX servers. Spawns bluefin/blackfin/yellowfin as subprocesses, brokers JSON-RPC over stdio, and normalizes raw AX names through @cobd/currentmap.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "license": "AGPL-3.0",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@cobd/currentmap": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.6",
+    "typescript": "^5.6.3"
+  }
+}
