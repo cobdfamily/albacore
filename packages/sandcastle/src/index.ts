@@ -4,6 +4,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
+import { attributes } from './attributes.js';
+
+export { attributes } from './attributes.js';
 
 const PROTOCOL_VERSION = '0.1';
 const WELCOME_TIMEOUT_MS = 5_000;
@@ -77,6 +80,12 @@ type PendingRequest = {
 
 type Listener = (event: RawAxEvent) => void;
 
+type SubscriptionState = {
+  count: number;
+  subscriptionId?: string;
+  ready: Promise<void>;
+};
+
 type SandcastleProcess = {
   stdin: Writable;
   stdout: Readable;
@@ -115,10 +124,24 @@ export type RawNodeApi = {
   setAttribute(handle: string, name: string, value: unknown): Promise<OkResult>;
 };
 
+export type NormalizedTreeApi = Pick<RawTreeApi, 'getRoot' | 'getFocused'>;
+
+export type NormalizedNodeApi = {
+  getAttribute(handle: string, name: string): Promise<GetAttributeResult>;
+  getAttributes(handle: string, names: string[]): Promise<GetAttributesResult>;
+  getActions(handle: string): Promise<GetActionsResult>;
+};
+
+export type NormalizedApi = {
+  tree: NormalizedTreeApi;
+  node: NormalizedNodeApi;
+};
+
 export class Sandcastle {
   readonly welcome: WelcomeMetadata;
   readonly tree: RawTreeApi;
   readonly node: RawNodeApi;
+  readonly normalized: NormalizedApi;
 
   #child: SandcastleProcess;
   #nextId = 1;
@@ -126,6 +149,7 @@ export class Sandcastle {
   #buffer = '';
   #stopped = false;
   #listeners = new Map<string, Set<Listener>>();
+  #subscriptions = new Map<string, SubscriptionState>();
 
   private constructor(child: SandcastleProcess, welcome: WelcomeMetadata) {
     this.#child = child;
@@ -152,6 +176,29 @@ export class Sandcastle {
       invokeAction: (handle, action) => this.#request<OkResult>('node.invokeAction', { handle, action }),
       setAttribute: (handle, name, value) => this.#request<OkResult>('node.setAttribute', { handle, name, value: value as Json })
     };
+
+    this.normalized = {
+      tree: {
+        getRoot: this.tree.getRoot,
+        getFocused: this.tree.getFocused
+      },
+      node: {
+        getAttribute: async (handle, name) => {
+          const result = await this.normalized.node.getAttributes(handle, [name]);
+          return { value: result.attributes[name] ?? null };
+        },
+        getAttributes: async (handle, names) => {
+          const rawNames = attributes.rawNamesFor(names);
+          const result = await this.node.getAttributes(handle, rawNames);
+          const normalized = attributes.normalize(result.attributes);
+          return { attributes: pickAttributes(normalized, names) };
+        },
+        getActions: async (handle) => {
+          const result = await this.node.getActions(handle);
+          return { actions: attributes.normalizeActions(result.actions) };
+        }
+      }
+    };
   }
 
   static async start(options: SandcastleStartOptions = {}): Promise<Sandcastle> {
@@ -173,7 +220,25 @@ export class Sandcastle {
     return Promise.resolve();
   }
 
-  protected addRawListener(name: string, listener: Listener): () => void {
+  subscribe(events: string[]): Promise<SubscribeResult> {
+    return this.#request<SubscribeResult>('subscribe', { events });
+  }
+
+  unsubscribe(subscriptionId: string): Promise<OkResult> {
+    return this.#request<OkResult>('unsubscribe', { subscriptionId });
+  }
+
+  on(name: string, listener: Listener): () => void {
+    const removeLocalListener = this.#addRawListener(name, listener);
+    this.#retainSubscription(name);
+
+    return () => {
+      removeLocalListener();
+      this.#releaseSubscription(name);
+    };
+  }
+
+  #addRawListener(name: string, listener: Listener): () => void {
     const listeners = this.#listeners.get(name) ?? new Set<Listener>();
     listeners.add(listener);
     this.#listeners.set(name, listeners);
@@ -181,6 +246,40 @@ export class Sandcastle {
       listeners.delete(listener);
       if (listeners.size === 0) this.#listeners.delete(name);
     };
+  }
+
+  #retainSubscription(name: string): void {
+    const existing = this.#subscriptions.get(name);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+
+    const state: SubscriptionState = {
+      count: 1,
+      ready: this.subscribe([name]).then((result) => {
+        state.subscriptionId = result.subscriptionId;
+      })
+    };
+    this.#subscriptions.set(name, state);
+  }
+
+  #releaseSubscription(name: string): void {
+    const state = this.#subscriptions.get(name);
+    if (!state) return;
+
+    state.count -= 1;
+    if (state.count > 0) return;
+
+    this.#subscriptions.delete(name);
+    state.ready
+      .then(() => {
+        if (state.subscriptionId && !this.#stopped) {
+          return this.unsubscribe(state.subscriptionId);
+        }
+        return undefined;
+      })
+      .catch(() => undefined);
   }
 
   #attachRuntimeHandlers(): void {
@@ -400,4 +499,12 @@ function isWelcomeMetadata(value: unknown): value is WelcomeMetadata {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function pickAttributes(source: Record<string, unknown>, names: readonly string[]): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const name of names) {
+    picked[name] = source[name] ?? null;
+  }
+  return picked;
 }
