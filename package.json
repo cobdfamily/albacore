@@ -1,0 +1,10 @@
+{
+  "name": "@cobd/albacore",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Albacore cross-platform screen reader monorepo",
+  "license": "AGPL-3.0",
+  "workspaces": [
+    "packages/*"
+  ]
+}
