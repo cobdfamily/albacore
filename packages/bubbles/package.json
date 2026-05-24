@@ -1,0 +1,9 @@
+{
+  "name": "@cobd/bubbles",
+  "version": "1.0.0",
+  "description": "Branding and asset bundle for the Albacore screen-reader ecosystem.",
+  "license": "AGPL-3.0",
+  "files": [
+    "assets"
+  ]
+}
