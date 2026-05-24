@@ -75,19 +75,44 @@ export class Element {
         await this.sandcastle.node.invokeAction(this.handle, action);
     }
 
-    // Equivalent of the legacy UIElement.compute_aria_label:
-    // walk through the attribute hierarchy (name ->
-    // description -> value -> roleDescription with the
-    // role suffix stripped) until something non-empty
-    // turns up. Used by screen-reader output layers.
+    // Walks the attribute hierarchy (name ->
+    // description -> value) for the first non-empty
+    // value and returns it with a trailing role word
+    // stripped. Used by screen-reader output layers.
+    //
+    // Why strip: macOS exposes labels like
+    // "full screen button" via AXRoleDescription
+    // (which our `name` fallback chain picks up).
+    // Announcing the label *and* the role on top
+    // gives "full screen button, button" -- the role
+    // gets read twice. Stripping the trailing role
+    // word yields "full screen", and the caller's
+    // own role announcement carries the kind.
+    //
+    // Ported from the legacy bluefin TS
+    // UIElement.compute_aria_label.
     async computeLabel(): Promise<string> {
         const attrs = await this.getAttributes(["name", "description", "value", "role"]);
+        const role = typeof attrs.role === "string" ? attrs.role : undefined;
+
+        const stripRole = (label: string): string => {
+            if (!role || role.length === 0) return label;
+            const suffix = ` ${role}`;
+            if (label.toLowerCase().endsWith(suffix.toLowerCase())) {
+                return label.slice(0, label.length - suffix.length);
+            }
+            return label;
+        };
+
         const name = attrs.name;
-        if (typeof name === "string" && name.length > 0) return name;
+        if (typeof name === "string" && name.length > 0) return stripRole(name);
+
         const description = attrs.description;
-        if (typeof description === "string" && description.length > 0) return description;
+        if (typeof description === "string" && description.length > 0) return stripRole(description);
+
         const value = attrs.value;
         if (value !== undefined && value !== null) return String(value);
+
         return "";
     }
 }

@@ -69,10 +69,14 @@ const announce = async (element: Element | null): Promise<void> => {
         await boundary();
         return;
     }
-    const label = (await element.computeLabel()) || "<no label>";
+    const labelRaw = await element.computeLabel();
     const role = (await element.role()) ?? "?";
+    const label = labelRaw || "<no label>";
     process.stdout.write(`${label}  [${role}]\n`);
-    speak(`${label}, ${role}`);
+    // Skip the label prefix when computeLabel
+    // returned empty -- announcing ", button" with
+    // a leading comma sounds broken.
+    speak(labelRaw ? `${labelRaw}, ${role}` : role);
 };
 
 const childrenWithSiblings = async (element: Element): Promise<Element[]> => {
