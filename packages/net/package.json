@@ -1,15 +1,23 @@
 {
   "name": "@cobd/net",
   "version": "1.0.0",
-  "main": "index.js",
   "type": "module",
-  "description": "Cross-platform CLI screen reader. Wires terminal IO to @cobd/core via @cobd/sandcastle.",
+  "description": "Cross-platform CLI screen reader. End-to-end demo of the bluetide -> sandcastle -> sandbucket -> core chain.",
   "license": "AGPL-3.0",
+  "bin": {
+    "net": "src/net.ts"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "demo": "tsx src/demo.ts"
   },
   "dependencies": {
+    "@cobd/bluetide": "*",
     "@cobd/core": "*",
-    "@cobd/sandcastle": "*"
+    "@cobd/sandbucket": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.6",
+    "tsx": "^4.20.5",
+    "typescript": "^5.6.3"
   }
 }
