@@ -1,0 +1,21 @@
+{
+  "name": "@cobd/sandbucket",
+  "version": "0.0.0",
+  "description": "Typed Element / App wrappers on top of @cobd/sandcastle. Gives consumers ergonomic navigation (parent/child/sibling) and per-node helpers without leaking raw handles.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "license": "AGPL-3.0",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test --import tsx test/*.test.ts"
+  },
+  "dependencies": {
+    "@cobd/sandcastle": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.6",
+    "tsx": "^4.20.5",
+    "typescript": "^5.6.3"
+  }
+}
