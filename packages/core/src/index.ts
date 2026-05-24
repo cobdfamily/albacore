@@ -38,6 +38,17 @@ export class Reader {
         return this.current;
     }
 
+    // For callers (like net's Cursor) that compute
+    // the destination element themselves via the
+    // Element API instead of through Reader's
+    // step-at-a-time moves. The single-step moves
+    // stay for simple cases; setCursor is the
+    // escape hatch for skip-singleton / drill
+    // navigation.
+    setCursor(element: Element | null): void {
+        this.current = element;
+    }
+
     async moveToFocused(): Promise<Element | null> {
         this.current = await this.bucket.focused();
         return this.current;

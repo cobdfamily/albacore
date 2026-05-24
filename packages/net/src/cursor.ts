@@ -79,18 +79,35 @@ const announce = async (element: Element | null): Promise<void> => {
     speak(labelRaw ? `${labelRaw}, ${role}` : role);
 };
 
-const childrenWithSiblings = async (element: Element): Promise<Element[]> => {
-    const parent = await element.parent();
-    if (!parent) return [];
-    return parent.children();
+// Drill down through a singleton chain starting
+// at `start`. Returns the first descendant that is
+// either a "decision point" (has siblings -- ie.
+// its parent has > 1 children) or a leaf (no
+// children of its own). `start` itself is returned
+// when it already meets one of those conditions.
+const drillDown = async (start: Element): Promise<Element> => {
+    let here = start;
+    while (true) {
+        if (await here.hasSiblings()) return here;
+        const kids = await here.children();
+        if (kids.length === 0) return here;
+        here = kids[0];
+    }
 };
 
-const findAncestorWithSiblings = async (element: Element): Promise<Element | null> => {
-    const siblings = await childrenWithSiblings(element);
-    if (siblings.length > 1) return element;
-    const parent = await element.parent();
-    if (!parent) return element;
-    return findAncestorWithSiblings(parent);
+// Walk up from `start` looking for the first
+// ancestor (or `start` itself) that has siblings.
+// Returns the root if no ancestor has siblings --
+// the caller should treat that as a boundary in
+// most directions.
+const escapeUp = async (start: Element): Promise<Element> => {
+    let here = start;
+    while (!(await here.hasSiblings())) {
+        const parent = await here.parent();
+        if (!parent) return here;
+        here = parent;
+    }
+    return here;
 };
 
 class Cursor {
@@ -106,62 +123,66 @@ class Cursor {
     }
 
     async up(): Promise<void> {
-        const current = this.reader.cursor;
-        if (!current) {
-            await boundary();
-            return;
-        }
-        const ancestor = await findAncestorWithSiblings(current);
-        const parent = ancestor ? await ancestor.parent() : null;
-        if (!parent) {
-            await boundary();
-            return;
-        }
-        await this.reader.moveToParent();
+        const start = this.reader.cursor;
+        if (!start) { await boundary(); return; }
+        const parent = await start.parent();
+        if (!parent) { await boundary(); return; }
+        // Skip up through singleton-wrapper ancestors:
+        // land on the first one that has siblings
+        // (the nearest decision point), or the root
+        // if none exists.
+        const dest = await escapeUp(parent);
+        this.reader.setCursor(dest);
         await this.announceCurrent();
     }
 
     async down(): Promise<void> {
-        const current = this.reader.cursor;
-        if (!current) {
-            await boundary();
-            return;
-        }
-        const first = await current.firstChild();
-        if (!first) {
-            await boundary();
-            return;
-        }
-        await this.reader.moveToFirstChild();
-        // Walk through any singleton chain manually so
-        // the cursor lands on a decision point.
-        let here = this.reader.cursor;
-        while (here) {
-            const kids = await here.children();
-            if (kids.length !== 1) break;
-            await this.reader.moveToFirstChild();
-            here = this.reader.cursor;
-        }
+        const start = this.reader.cursor;
+        if (!start) { await boundary(); return; }
+        const first = await start.firstChild();
+        if (!first) { await boundary(); return; }
+        // Skip down through singleton-wrapper
+        // descendants: land on the first decision
+        // point or leaf below us. A node that has
+        // multiple children but no siblings is still
+        // a wrapper -- drill past it.
+        const dest = await drillDown(first);
+        this.reader.setCursor(dest);
         await this.announceCurrent();
     }
 
     async right(): Promise<void> {
-        const next = this.reader.cursor ? await this.reader.cursor.nextSibling() : null;
-        if (!next) {
-            await boundary();
-            return;
-        }
-        await this.reader.moveToNextSibling();
-        await this.announceCurrent();
+        await this.sideways("next");
     }
 
     async left(): Promise<void> {
-        const prev = this.reader.cursor ? await this.reader.cursor.previousSibling() : null;
-        if (!prev) {
-            await boundary();
-            return;
-        }
-        await this.reader.moveToPreviousSibling();
+        await this.sideways("previous");
+    }
+
+    private async sideways(direction: "next" | "previous"): Promise<void> {
+        const start = this.reader.cursor;
+        if (!start) { await boundary(); return; }
+        // If the cursor is on a singleton wrapper,
+        // escape up to the nearest sibling-having
+        // ancestor before looking for a sibling.
+        const pivot = await escapeUp(start);
+        if (!(await pivot.hasSiblings())) { await boundary(); return; }
+
+        const sibling = direction === "next"
+            ? await pivot.nextSibling()
+            : await pivot.previousSibling();
+        if (!sibling) { await boundary(); return; }
+
+        // If the destination sibling is itself a
+        // thin wrapper (exactly one child), drill
+        // into its singleton chain so the user lands
+        // on real content, not a wrapper.
+        const kids = await sibling.children();
+        const dest = kids.length === 1
+            ? await drillDown(kids[0])
+            : sibling;
+
+        this.reader.setCursor(dest);
         await this.announceCurrent();
     }
 }
