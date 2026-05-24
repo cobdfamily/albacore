@@ -4,8 +4,12 @@
   "description": "Map accessibility attributes across platforms",
   "main": "dist/index.js",
   "type": "module",
+  "files": [
+    "dist",
+    "src/assets"
+  ],
   "scripts": {
-    "build": "tsc && fix-tsc-es-imports -y && npm version patch --no-git-tag-version"
+    "build": "tsc && fix-tsc-es-imports -y && node -e \"require('node:fs').cpSync('src/assets','dist/assets',{recursive:true})\""
   },
   "author": "Alex Jurgensen",
   "license": "AGPL-3.0",
