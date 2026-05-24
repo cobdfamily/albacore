@@ -151,38 +151,23 @@ class Cursor {
         await this.announceCurrent();
     }
 
+    // Left and right are literal sibling moves --
+    // no escape-up, no drill. Up/down already
+    // skip past singleton wrappers, so the cursor
+    // should normally already be on a sibling-
+    // having node when the user reaches for left
+    // or right. If it isn't, boundary fires.
     async right(): Promise<void> {
-        await this.sideways("next");
+        const next = this.reader.cursor ? await this.reader.cursor.nextSibling() : null;
+        if (!next) { await boundary(); return; }
+        await this.reader.moveToNextSibling();
+        await this.announceCurrent();
     }
 
     async left(): Promise<void> {
-        await this.sideways("previous");
-    }
-
-    private async sideways(direction: "next" | "previous"): Promise<void> {
-        const start = this.reader.cursor;
-        if (!start) { await boundary(); return; }
-        // If the cursor is on a singleton wrapper,
-        // escape up to the nearest sibling-having
-        // ancestor before looking for a sibling.
-        const pivot = await escapeUp(start);
-        if (!(await pivot.hasSiblings())) { await boundary(); return; }
-
-        const sibling = direction === "next"
-            ? await pivot.nextSibling()
-            : await pivot.previousSibling();
-        if (!sibling) { await boundary(); return; }
-
-        // If the destination sibling is itself a
-        // thin wrapper (exactly one child), drill
-        // into its singleton chain so the user lands
-        // on real content, not a wrapper.
-        const kids = await sibling.children();
-        const dest = kids.length === 1
-            ? await drillDown(kids[0])
-            : sibling;
-
-        this.reader.setCursor(dest);
+        const prev = this.reader.cursor ? await this.reader.cursor.previousSibling() : null;
+        if (!prev) { await boundary(); return; }
+        await this.reader.moveToPreviousSibling();
         await this.announceCurrent();
     }
 }
