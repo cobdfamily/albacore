@@ -1,8 +1,8 @@
 {
-  "name": "albacore",
+  "name": "@cobd/manila",
   "productName": "Albacore",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Electron desktop shell for the Albacore screen reader. Hosts @cobd/core in the renderer and spawns @cobd/sandcastle in the main process.",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
