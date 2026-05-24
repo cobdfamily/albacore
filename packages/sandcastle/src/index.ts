@@ -30,11 +30,25 @@ export type JsonRpcError = {
 export type NodeHandleResult = { handle: string | null };
 export type GetAttributeResult = { value: unknown };
 export type GetAttributesResult = { attributes: Record<string, unknown> };
+export type GetAttributeNamesResult = { names: string[] };
 export type GetChildrenResult = { children: string[]; total: number };
 export type GetAncestorsResult = { ancestors: string[] };
 export type GetActionsResult = { actions: string[] };
 export type OkResult = { ok: true };
 export type SubscribeResult = { subscriptionId: string };
+
+export type AccessibilityEnabledResult = { enabled: boolean };
+export type KeychainItemResult = { value: string | null };
+export type BatteryStatusResult = {
+  percentage: number | null;
+  isCharging: boolean;
+  isPresent: boolean;
+};
+export type AppleScriptResult = {
+  result: string;
+  isError: boolean;
+  errorMessage?: string;
+};
 
 export type NodeSnapshot = {
   handle: string;
@@ -115,6 +129,7 @@ export type RawTreeApi = {
 export type RawNodeApi = {
   getAttribute(handle: string, name: string): Promise<GetAttributeResult>;
   getAttributes(handle: string, names: string[]): Promise<GetAttributesResult>;
+  getAttributeNames(handle: string): Promise<GetAttributeNamesResult>;
   getChildren(handle: string, offset?: number, limit?: number): Promise<GetChildrenResult>;
   getParent(handle: string): Promise<NodeHandleResult>;
   getAncestors(handle: string): Promise<GetAncestorsResult>;
@@ -122,6 +137,17 @@ export type RawNodeApi = {
   getActions(handle: string): Promise<GetActionsResult>;
   invokeAction(handle: string, action: string): Promise<OkResult>;
   setAttribute(handle: string, name: string, value: unknown): Promise<OkResult>;
+};
+
+export type SystemApi = {
+  isAccessibilityEnabled(): Promise<AccessibilityEnabledResult>;
+  getBatteryStatus(): Promise<BatteryStatusResult>;
+  runAppleScript(source: string): Promise<AppleScriptResult>;
+};
+
+export type SecurityApi = {
+  getKeychainItem(service: string, account: string): Promise<KeychainItemResult>;
+  setKeychainItem(service: string, account: string, value: string): Promise<OkResult>;
 };
 
 export type NormalizedTreeApi = Pick<RawTreeApi, 'getRoot' | 'getFocused'>;
@@ -141,6 +167,8 @@ export class Sandcastle {
   readonly welcome: WelcomeMetadata;
   readonly tree: RawTreeApi;
   readonly node: RawNodeApi;
+  readonly system: SystemApi;
+  readonly security: SecurityApi;
   readonly normalized: NormalizedApi;
 
   #child: SandcastleProcess;
@@ -164,6 +192,7 @@ export class Sandcastle {
     this.node = {
       getAttribute: (handle, name) => this.#request<GetAttributeResult>('node.getAttribute', { handle, name }),
       getAttributes: (handle, names) => this.#request<GetAttributesResult>('node.getAttributes', { handle, names }),
+      getAttributeNames: (handle) => this.#request<GetAttributeNamesResult>('node.getAttributeNames', { handle }),
       getChildren: (handle, offset, limit) => {
         const params: JsonObject = { handle };
         if (offset !== undefined) params.offset = offset;
@@ -176,6 +205,22 @@ export class Sandcastle {
       getActions: (handle) => this.#request<GetActionsResult>('node.getActions', { handle }),
       invokeAction: (handle, action) => this.#request<OkResult>('node.invokeAction', { handle, action }),
       setAttribute: (handle, name, value) => this.#request<OkResult>('node.setAttribute', { handle, name, value: value as Json })
+    };
+
+    this.system = {
+      isAccessibilityEnabled: () =>
+        this.#request<AccessibilityEnabledResult>('system.isAccessibilityEnabled'),
+      getBatteryStatus: () =>
+        this.#request<BatteryStatusResult>('system.getBatteryStatus'),
+      runAppleScript: (source) =>
+        this.#request<AppleScriptResult>('system.runAppleScript', { source })
+    };
+
+    this.security = {
+      getKeychainItem: (service, account) =>
+        this.#request<KeychainItemResult>('security.getKeychainItem', { service, account }),
+      setKeychainItem: (service, account, value) =>
+        this.#request<OkResult>('security.setKeychainItem', { service, account, value })
     };
 
     this.normalized = {
