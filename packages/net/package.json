@@ -1,16 +1,15 @@
 {
-  "name": "test",
+  "name": "@cobd/net",
   "version": "1.0.0",
   "main": "index.js",
-"type": "module",
+  "type": "module",
+  "description": "Cross-platform CLI screen reader. Wires terminal IO to @cobd/core via @cobd/sandcastle.",
+  "license": "AGPL-3.0",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "AGPL-3.0",
-  "description": "",
   "dependencies": {
-    "@cobd/bluefin": "file:../bluefin"
+    "@cobd/core": "*",
+    "@cobd/sandcastle": "*"
   }
 }
