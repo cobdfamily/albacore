@@ -15,14 +15,23 @@
 
 import type { Sandcastle } from "@cobd/sandcastle";
 import * as libbluefin from "@cobd/libbluefin";
+import * as libblackfin from "@cobd/libblackfin";
+import * as libskipjack from "@cobd/libskipjack";
 
 export type PlatformLibrary = typeof libbluefin;
 
 // Server name (from welcome.server) -> platform
-// binding. Add entries as more *fin servers + their
-// TS counterparts come online.
+// binding. Today bluefin-swift is the only fully
+// implemented server; the blackfin / skipjack
+// entries point at stub libraries whose platform-
+// specific method bodies throw "not implemented"
+// until the corresponding *fin server lands. The
+// scaffold lets the dispatch logic be exercised
+// before either Linux or Windows actually ships.
 const SERVER_TO_LIB: Record<string, PlatformLibrary> = {
-    "bluefin-swift": libbluefin
+    "bluefin-swift": libbluefin,
+    "blackfin-server": libblackfin as unknown as PlatformLibrary,
+    "skipjack-server": libskipjack as unknown as PlatformLibrary
 };
 
 export class Sandbucket {

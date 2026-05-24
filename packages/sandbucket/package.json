@@ -11,7 +11,9 @@
     "test": "node --test --import tsx test/*.test.ts"
   },
   "dependencies": {
+    "@cobd/libblackfin": "*",
     "@cobd/libbluefin": "*",
+    "@cobd/libskipjack": "*",
     "@cobd/sandcastle": "*"
   },
   "devDependencies": {
