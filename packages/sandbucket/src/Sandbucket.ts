@@ -1,26 +1,24 @@
-// Top-level handle: owns a Sandcastle instance,
-// hands out typed Element / App objects. Most
-// callers just want `Sandbucket.start()` and then
-// `bucket.activeApp()` / `bucket.focused()`. The
-// underlying Sandcastle is exposed via `.sandcastle`
-// for callers (eg. tests, advanced consumers) that
-// need raw protocol access.
+// Top-level handle: wraps a Sandcastle and hands
+// out typed Element / App objects. Sandbucket
+// itself does not spawn anything -- the caller
+// brings a Sandcastle (typically via
+// `Bluetide.start()` on Node, or an IPC-bridge
+// Sandcastle inside a browser renderer). Keeping
+// the spawn out of here keeps sandbucket safe to
+// bundle for the browser.
 
-import { Sandcastle, type SandcastleStartOptions } from "@cobd/sandcastle";
+import type { Sandcastle } from "@cobd/sandcastle";
 import { Element } from "./Element.js";
 import { App } from "./App.js";
 
 export class Sandbucket {
     private constructor(public readonly sandcastle: Sandcastle) {}
 
-    static async start(options: SandcastleStartOptions = {}): Promise<Sandbucket> {
-        const sandcastle = await Sandcastle.start(options);
-        return new Sandbucket(sandcastle);
-    }
-
-    // Wrap an existing Sandcastle. Useful for tests
-    // and for hosts (manila's main process) that want
-    // to own the spawn lifecycle separately.
+    // Wrap an already-connected Sandcastle. The host
+    // owns the spawn / IPC lifecycle.
+    //
+    //   const sc = await Bluetide.start();
+    //   const bucket = Sandbucket.wrap(sc);
     static wrap(sandcastle: Sandcastle): Sandbucket {
         return new Sandbucket(sandcastle);
     }

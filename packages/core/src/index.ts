@@ -19,22 +19,19 @@ export class Reader {
 
     private constructor(public readonly bucket: Sandbucket) {}
 
+    // Hosts hand in a Sandbucket they constructed.
+    // No spawn happens here: this keeps core safe to
+    // bundle for the browser (Electron renderer / web
+    // host). Node consumers (net, manila's main) wire
+    // the spawn via @cobd/bluetide:
+    //
+    //   const sc = await Bluetide.start();
+    //   const bucket = Sandbucket.wrap(sc);
+    //   const reader = await Reader.fromBucket(bucket);
     static async fromBucket(bucket: Sandbucket): Promise<Reader> {
         const reader = new Reader(bucket);
         reader.current = await bucket.focused();
         return reader;
-    }
-
-    // Convenience for hosts that don't already own a
-    // Sandbucket. Spawns the platform *fin server,
-    // wraps it, and primes the cursor to the focused
-    // element. Hosts that need to manage the spawn
-    // lifecycle separately (manila's main process)
-    // should pass an existing Sandbucket via
-    // fromBucket().
-    static async start(): Promise<Reader> {
-        const bucket = await Sandbucket.start();
-        return Reader.fromBucket(bucket);
     }
 
     get cursor(): Element | null {

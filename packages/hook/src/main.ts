@@ -1,18 +1,17 @@
 // Hook bootstrap. Loaded by index.html in any
-// browser-capable shell. Today this is a placeholder
-// that just announces itself; real wiring lands in
-// Phase E.
+// browser-capable shell. Imports @cobd/core (and
+// transitively @cobd/sandbucket + @cobd/sandcastle)
+// safely now that the Node-only spawn code lives in
+// @cobd/bluetide; the browser bundle no longer pulls
+// in child_process or fs.
 //
-// Why not import @cobd/core here?  Core depends on
-// @cobd/sandbucket which depends on @cobd/sandcastle,
-// which legitimately imports Node builtins
-// (child_process / fs) to spawn the *fin AX binary.
-// That spawn never runs in a browser -- manila's
-// main process owns it and forwards results via
-// IPC. To keep that work isolated until the spawn /
-// browser-safe split lands in @cobd/sandcastle, hook
-// stays import-free for now. Manila's renderer will
-// import @cobd/core through its own bundling
-// pipeline.
+// The host (manila's main process for Electron,
+// some other glue for a pure-web shell) is
+// responsible for constructing a Sandcastle via
+// an IPC bridge and handing it to Sandbucket.wrap.
+// Until that wiring lands, this is a no-op import
+// that proves the bundle compiles end-to-end.
 
-console.log("@cobd/hook: ready");
+import { Reader } from "@cobd/core";
+
+console.log("@cobd/hook: ready", { hasReader: typeof Reader === "function" });
